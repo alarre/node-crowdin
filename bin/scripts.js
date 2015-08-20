@@ -17,6 +17,8 @@ var exec = require('child_process').exec;
 var CONFIG_PATH = path.join(process.cwd(), 'crowdin.json');
 var crowdin = require(CONFIG_PATH);
 
+var KEYS_FILE = 'Messages.po';
+
 /******* PRIVATE METHODS *******/
 function refreshTranslations(callback) {
 	logger.debug("Refreshing translation.");
@@ -65,9 +67,9 @@ function downloadTranslations(callback) {
 
 function uploadKeys(fileName) {
 	logger.debug('Uploading traductions...');
-	var formData = {
-		'files[keys.po]': fs.createReadStream('./i18n/' + fileName)
-	};
+	var formData = {};
+    formData['files['+KEYS_FILE+']'] = fs.createReadStream('./i18n/' + fileName);
+    
 	request.post({
 		url: 'https://crowdin.com/api/project/' + crowdin.projectId + '/add-file?key=' + crowdin.apiKey,
 		formData: formData
@@ -82,9 +84,9 @@ function uploadKeys(fileName) {
 
 function upgradeKeys(fileName) {
 	logger.debug('Uploading traductions...');
-	var formData = {
-		'files[keys.po]': fs.createReadStream('./i18n/' + fileName)
-	};
+	var formData = {};
+    formData['files['+KEYS_FILE+']'] = fs.createReadStream('./i18n/' + fileName);
+    
 	request.post({
 		url: 'https://crowdin.com/api/project/' + crowdin.projectId + '/update-file?key=' + crowdin.apiKey,
 		formData: formData
@@ -99,7 +101,7 @@ function upgradeKeys(fileName) {
 
 function mergeTranslations(srcFile, outputFile, callback) {
 	logger.info('Merging transalations.');
-	exec('msgcat ./i18n/' + srcFile + " ./i18n/es-AR/keys.po -o ./i18n/" + outputFile, callback);
+	exec("msgcat ./i18n/" + srcFile + " ./i18n/es-AR/" + KEYS_FILE + " -o ./i18n/" + outputFile, callback);
 }
 
 function initPaths(fileName) {
@@ -160,7 +162,7 @@ function endsWith(str, suffix) {
 
 function getKeys(file) {
 	logger.debug("Getting tranlations from file: " + file);
-	exec('xgettext -j --from-code=UTF-8 --force-po --no-wrap -ktr:1 -ktrd:1 -ktrn:1,2 -ktrnd:1,2 -o i18n/keys.po -LJavaScript ' + file,
+	exec('xgettext -j --from-code=UTF-8 --force-po --no-wrap -ktr:1 -ktrd:1 -ktrn:1,2 -ktrnd:1,2 -o i18n/'+KEYS_FILE+' -LJavaScript ' + file,
 		function(error) {
 			if (error !== null) {
 				logger.error('exec error: ' + error);
@@ -169,7 +171,7 @@ function getKeys(file) {
 }
 */
 
-function scandDirectory(directory, fileName, callback) {
+function scanDirectory(directory, fileName, callback) {
 	logger.debug("Scaning " + directory + " for keys.");
 	exec('find ' + directory + ' -iname "*.js" | xargs xgettext -j --from-code=UTF-8 --force-po --no-wrap -ktr:1 -ktrd:1 -ktrn:1,2 -ktrnd:1,2 -o i18n/' + fileName + ' -LJavaScript',
 		function(error) {
@@ -182,14 +184,14 @@ function scandDirectory(directory, fileName, callback) {
 
 function gerateTranslationFile(fileName, callback) {
 	initPaths(fileName);
-	scandDirectory(crowdin.srcPath, fileName, callback);
+	scanDirectory(crowdin.srcPath, fileName, callback);
 }
 
 /*******************************/
 var createCrowdin = function() {
-	gerateTranslationFile('keys.po', function(error) {
+	gerateTranslationFile(KEYS_FILE, function(error) {
 		if (!error) {
-			uploadKeys('keys.po');
+			uploadKeys(KEYS_FILE);
 		}
 	});
 };
@@ -231,15 +233,15 @@ var downloadCrowdin = function(callback) {
 };
 
 var uploadCrowdin = function(merge) {
-	gerateTranslationFile('keys.po', function(error) {
+	gerateTranslationFile(KEYS_FILE, function(error) {
 		if (merge) {
 			downloadCrowdin(function(error) {
 				if (!error) {
-					mergeTranslations('keys.po', 'merged.po', function(error) {
+					mergeTranslations(KEYS_FILE, 'merged_'+KEYS_FILE, function(error) {
 						if (error) {
-							logger.error('Error mergin translations.');
+							logger.error('Error mergin translations. '+JSON.stringify(error));
 						} else {
-							upgradeKeys('merged.po');
+							upgradeKeys('merged_'+KEYS_FILE);
 						}
 					});
 				}
@@ -248,7 +250,7 @@ var uploadCrowdin = function(merge) {
 			if (error) {
 
 			} else {
-				upgradeKeys('keys.po');
+				upgradeKeys('merged_'+KEYS_FILE);
 			}
 		}
 	});
@@ -259,3 +261,4 @@ module.exports.createCrowdin = createCrowdin;
 module.exports.downloadCrowdin = downloadCrowdin;
 module.exports.uploadCrowdin = uploadCrowdin;
 module.exports.generateFile = gerateTranslationFile;
+module.exports.KEYS_FILE = KEYS_FILE;
